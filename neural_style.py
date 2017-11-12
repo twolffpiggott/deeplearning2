@@ -32,6 +32,28 @@ def gram_matrix(x):
 def style_loss(x, targ):
     return K.sum(metrics.mse(gram_matrix(x), gram_matrix(targ)))
 
+def conv_block(x, filters, size, stride=(2,2), mode='same', act=True):
+    x = Convolution2D(filters, size, size, subsample=stride, border_mode=mode)(x)
+    x = BatchNormalization(mode=2)(x)
+    return Activation('relu')(x) if act else x
+
+def res_block(ip, nf=64):
+    x = conv_block(ip, nf, 3, (1,1))
+    x = conv_block(x, nf, 3, (1,1), act=False)
+    return merge([x, ip], mode='sum')
+
+def deconv_block(x, filters, size, shape, stride=(2,2)):
+    x = Deconvolution2D(filters, size, size, subsample=stride,
+        border_mode='same', output_shape=(None,)+shape)(x)
+    x = BatchNormalization(mode=2)(x)
+    return Activation('relu')(x)
+
+def up_block(x, filters, size):
+    x = keras.layers.UpSampling2D()(x)
+    x = Convolution2D(filters, size, size, border_mode='same')(x)
+    x = BatchNormalization(mode=2)(x)
+    return Activation('relu')(x)
+
 
 class StyleTransfer:
     
@@ -127,6 +149,12 @@ class StyleTransfer:
         evaluator = Evaluator(transfer_fn, self.style_shp)
         x = self.rand_img(self.style_shp)
         x = self.solve_image(evaluator, niter, x, self.style_shp)
+
+    def super_resolution(self):
+        arr_lr = bcolz.open('data/trn_resized_72_r.bc')[:]
+        arr_hr = bcolz.open('data/trn_resized_288_r.bc')[:]
+
+
     
         
         
