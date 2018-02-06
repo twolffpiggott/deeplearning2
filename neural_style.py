@@ -34,24 +34,28 @@ def style_loss(x, targ):
 
 def conv_block(x, filters, size, stride=(2,2), mode='same', act=True):
     x = Convolution2D(filters, size, size, subsample=stride, border_mode=mode)(x)
-    x = BatchNormalization(mode=2)(x)
+    x = BatchNormalization()(x)
     return Activation('relu')(x) if act else x
 
+# res block passes input through two convolutional blocks then adds the 
+# residuals back to the input
+# literature says no activation for final layer resnet blocks
 def res_block(ip, nf=64):
     x = conv_block(ip, nf, 3, (1,1))
     x = conv_block(x, nf, 3, (1,1), act=False)
     return merge([x, ip], mode='sum')
 
 def deconv_block(x, filters, size, shape, stride=(2,2)):
-    x = Deconvolution2D(filters, size, size, subsample=stride,
-        border_mode='same', output_shape=(None,)+shape)(x)
-    x = BatchNormalization(mode=2)(x)
+    x = Deconvolution2D(filters=filters, kernel_size=(size, size), 
+                        strides=stride, padding='same', 
+                        output_shape=(None,)+shape)(x)
+    x = BatchNormalization(axis=1)(x)
     return Activation('relu')(x)
 
 def up_block(x, filters, size):
     x = keras.layers.UpSampling2D()(x)
     x = Convolution2D(filters, size, size, border_mode='same')(x)
-    x = BatchNormalization(mode=2)(x)
+    x = BatchNormalization(axis=1)(x)
     return Activation('relu')(x)
 
 
@@ -150,9 +154,58 @@ class StyleTransfer:
         x = self.rand_img(self.style_shp)
         x = self.solve_image(evaluator, niter, x, self.style_shp)
 
-    def super_resolution(self):
-        arr_lr = bcolz.open('data/trn_resized_72_r.bc')[:]
-        arr_hr = bcolz.open('data/trn_resized_288_r.bc')[:]
+    def super_resolution(self, train=False):
+        arr_lr = bcolz.open('data/trn_resized_72.bc')[:]
+        arr_hr = bcolz.open('data/trn_resized_288.bc')[:]
+        
+        inp_shape = arr_lr.shape[1:]
+        inp = Input(inp_shape)
+        # 64 filters, filter size 6, stride 1
+        x = conv_block(inp, 64, 9, (1,1))
+        # the computation: starting with a low-res image
+        # figure out what the objects are so it knows what to draw
+        # generative models: do the computation at a low resolution
+        # because faster computation with larger receptive field.
+        for i in range(4): x = res_block(x)
+        # deconv is simply a convolution on a padded input to recreate a 
+        # larger input. See helpful spreadsheet in lecture.
+        # or see paper convolution arithmetic guide.
+        x = deconv_block(x, 64, 3, (144, 144, 64))
+        x = deconv_block(x, 64, 3, (288, 288, 64))
+        # last arg in deconv block is shape of output
+        x = Convolution2D(3, 9, 9, activation="tanh", border_mode="same")(x)
+        # output of the upsampling network
+        # takes range of tanh output from [0,1] to [0, 255]
+        outp = Lambda(lambda x: (x + 1) * 127.5)(x)
+        if train:
+            # creates a Keras layer that applies the preprocessing function
+            vgg_l = Lambda(self.preproc)
+            # preprocesses output of upsampling network
+            outp_l = vgg_l(outp)
+            out_shape = arr_hr.shape[1:]
+            vgg_inp = Input(out_shape)
+            vgg = VGG16(include_top=False, input_tensor=vgg_l(vgg_inp))
+            for l in vgg.layers : l.trainable = False
+            vgg_content = Model(vgg_inp, vgg.get_layer('block2_conv2').output)
+            # models can be treated as functions and passed layers as args
+            # activation of vgg from high resolution image
+            vgg1 = vgg_content(vgg_inp)
+            # activation of vgg from upsampled low-res image
+            vgg2 = vgg_content(outp_l)
+            # defining the final model and loss
+            loss = Lambda(lambda x: K.sqrt(K.mean((x[0]-x[1])**2, (1,2))))([vgg1, vgg2])
+            m_final = Model([inp, vgg_inp], loss)
+            targ = np.zeros((arr_hr.shape[0], 128))
+            m_final.compile('adam', 'mse')
+            m_final.fit([arr_lr, arr_hr], targ, 8, 2)
+        top_model = Model(inp, outp)
+        if train:
+            top_model.save_weights('top_final.h5')
+        top_model.load_weights('top_final.h5')
+        p = top_model.predict(arr_lr[10:11])
+        plt.imshow(arr_lr[10].astype('uint8'))
+        plt.imshow(p[0].astype('uint8'))
+        
 
 
     
