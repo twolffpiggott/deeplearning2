@@ -52,6 +52,8 @@ def deconv_block(x, filters, size, shape, stride=(2,2)):
     x = BatchNormalization(axis=1)(x)
     return Activation('relu')(x)
 
+# upsampling can be used in place of deconvolutions to avoid checkerboard
+# artifacts
 def up_block(x, filters, size):
     x = keras.layers.UpSampling2D()(x)
     x = Convolution2D(filters, size, size, border_mode='same')(x)
