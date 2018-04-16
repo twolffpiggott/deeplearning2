@@ -35,7 +35,7 @@ class DCGAN_D(nn.Module):
         :param n_extra_layers: number of extra layers
         """
         # call init of the parent class
-        super(DCGAN_D, self).__init__()
+        super().__init__()
         self.ngpu = ngpu
         assert isize % 16 == 0, "isize has to be a multiple of 16"
         main = nn.Sequential()
@@ -95,7 +95,7 @@ class DCGAN_G(nn.Module):
         :param ngpu: number of gpus
         :param n_extra_layers: number of extra layers
         """
-        super(DCGAN_G, self).__init__()
+        super().__init__()
         self.ngpu = ngpu
         assert isize % 16 == 0, "isize has to be a multiple of 16"
         cngf, tisize = ngf // 2, 4
