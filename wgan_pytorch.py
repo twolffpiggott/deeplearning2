@@ -1,5 +1,5 @@
 from dcgan import DCGAN_D, DCGAN_G
-from torchvision import datasets, transforms
+from torchvision import datasets, transforms, utils
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from decorators import timeit
@@ -27,11 +27,15 @@ n = len(dataloader)
 print(n)
 
 
-def show(img, figsize=(6, 6)):
+def save(img, fname, dpi, figsize=(6, 6)):
     plt.figure(figsize=figsize)
-    plt.imshow(np.transpose((img/2+0.5).clamp(0, 1).numpy(), (1, 2, 0)),
-               interpolation='nearest')
+    plt.imsave(fname, arr=np.transpose((img/2+0.5).clamp(0, 1).numpy(), (1, 2, 0)),
+               interpolation='nearest', dpi=dpi)
 
+def save(img, fname, dpi, figsize=(6, 6)):
+    plt.figure(figsize=figsize)
+    plt.imshow(np.transpose((img/2+0.5).clamp(0,1).numpy(), (1,2,0)), interpolation='nearest')
+    plt.savefig(fname, dpi=dpi)
 
 def weights_init(mod):
     """
@@ -73,22 +77,46 @@ discriminator_optim = optim.RMSprop(discriminator.parameters(), lr=1e-4)
 
 
 def discriminator_step(v, init_grad):
+    """
+    Feed a candidate image (real or fake) to the discriminator and compute the
+    gradients with respect to the loss.
+
+    :param v: candidate image for discriminator
+    :param init_grad:
+    """
     err = discriminator(v)
     err.backward(init_grad)
     return err
 
 
 def make_trainable(net, val):
+    """
+    Toggle trainanility for part of the network (either generator or
+    discriminator).
+
+    :param net: model to toggle
+    :param val: bool trainability
+    """
     for p in net.parameters():
         p.requires_grad = val
 
+
+tqdm.monitor_interval = 0
 @timeit
 def train(niter, first=True):
+    """
+    Training loop for the GAN.
+
+    :param niter: number of epochs
+    :param first: enable increased training frequency for discriminator during
+                  the early part of training
+    """
     gen_iterations = 0
-    with tqdm(range(niter), desc='training model') as pbar:
-        for epoch in range(niter):
-            data_iter = iter(dataloader)
-            i = 0
+    for epoch in range(niter):
+        data_iter = iter(dataloader)
+        i = 0
+        with tqdm(range(n), desc=f'[epoch: {epoch}/{niter}, '
+                  f'generator iters: {gen_iterations}]', leave=False) as pbar:
             while i < n:
                 make_trainable(discriminator, True)
                 d_iters = (100 if first and (gen_iterations < 25) or
@@ -108,16 +136,17 @@ def train(niter, first=True):
                     d_err_fake = discriminator_step(inpt, neg_one)
                     d_err = d_err_real - d_err_fake
                     discriminator_optim.step()
+                    pbar.update()
                 make_trainable(discriminator, False)
                 generator.zero_grad()
                 g_err = discriminator_step(generator(create_noise(bs)), one)
                 generator_optim.step()
                 gen_iterations += 1
-            pbar.update()
 
-train(200, True)
+train(10, True)
 
-
-
+# visualising results
+fake = generator(fixed_noise).data.cpu()
+save(img=utils.make_grid(fake), fname='cifar_grid.png', dpi=600)
 
 
