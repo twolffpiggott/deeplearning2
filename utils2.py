@@ -22,7 +22,8 @@ from tensorflow.python.framework import ops
 
 from keras_tqdm import TQDMNotebookCallback
 from keras import initializers
-from keras.applications.resnet50 import ResNet50, decode_predictions, conv_block, identity_block
+from keras.applications.resnet50 import ResNet50, decode_predictions
+#from keras.applications.resnet50 import conv_block, identity_block
 from keras.applications.vgg16 import VGG16
 from keras.preprocessing import image
 from keras.preprocessing.sequence import pad_sequences
