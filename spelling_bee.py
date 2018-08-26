@@ -135,8 +135,10 @@ def make_model(phoneme_data):
                               activation='softmax'))(x)
 
     model = Model(inp, x)
-    return model.compile(Adam(), 'sparse_categorical_crossentropy',
-                         metrics=['acc'])
+    model.compile(Adam(), 'sparse_categorical_crossentropy',
+                  metrics=['acc'])
+    model.summary()
+    return model
 
 
 if __name__ == "__main__":
@@ -152,4 +154,8 @@ if __name__ == "__main__":
     logger.info('Input shape: %s Labels shape: %s', input_train.shape,
                 labels_train.shape)
     model = make_model(phoneme_data=data)
-
+    hist = model.fit(input_train, np.expand_dims(labels_train, -1),
+                     validation_data=[input_test,
+                                      np.expand_dims(labels_test, -1)],
+                     batch_size=64, epochs=3)
+    logger.info('Loss history: %s', hist.history['val_loss'])
